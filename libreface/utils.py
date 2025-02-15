@@ -31,8 +31,11 @@ def get_frames_from_video(video_path, temp_dir="./tmp"):
     
     return cur_video_save_path
 
-def get_frames_from_video_ffmpeg(video_path, temp_dir="./tmp"):
-    
+def get_frames_from_video_ffmpeg(video_path, temp_dir="./tmp", frame_interval=1):
+    """
+    frame_interval forces to take one frame every interval
+    """
+
     cur_video_name = ".".join(video_path.split("/")[-1].split(".")[:-1])
     cur_video_save_path = uniquify_dir(os.path.join(temp_dir, cur_video_name))
     os.makedirs(cur_video_save_path, exist_ok=True)
@@ -40,15 +43,78 @@ def get_frames_from_video_ffmpeg(video_path, temp_dir="./tmp"):
     if not os.path.exists(temp_dir):
         os.makedirs(temp_dir)
 
-    # FFmpeg command to extract frames
+    # FFmpeg command to extract frames at the given fps
     output_pattern = os.path.join(cur_video_save_path, 'frame_%09d.png')
     ffmpeg_command = [
         'ffmpeg', '-i', video_path,
-        output_pattern
     ]
+    if frame_interval>1:
+        ffmpeg_command.append('-vf')
+        ffmpeg_command.append(f"select=not(mod(n\\,{frame_interval}))")
+        ffmpeg_command.append('-vsync') # Ensure variable frame rate output to match selected frames
+        ffmpeg_command.append('vfr')
+    ffmpeg_command.append(output_pattern)
     
     # Run the ffmpeg command
-    subprocess.run(ffmpeg_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    fps_output = subprocess.run(ffmpeg_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+    # Create DataFrame to store frame index, path, and timestamp
+    frame_files = sorted(os.listdir(cur_video_save_path))
+    frame_index = []
+    frame_paths = []
+    frame_timestamps = []
+        
+    if frame_interval:
+        # Get frame rate of the video
+        ffprobe_command = [
+            'ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 
+            'stream=r_frame_rate', '-of', 'default=noprint_wrappers=1:nokey=1', video_path
+        ]
+        fps_output = subprocess.check_output(ffprobe_command, text=True).strip()
+        original_fps = eval(fps_output)  # Get frames per second as a float
+
+    # Populate DataFrame
+    for i, frame_file in enumerate(frame_files):
+        frame_index.append(i)
+        frame_paths.append(os.path.join(cur_video_save_path, frame_file))
+        # Calculate timestamp: frame index in the original video is (i * frame_interval)
+        frame_timestamps.append((i * frame_interval) / original_fps)
+
+    # Create DataFrame
+    df = pd.DataFrame({
+        'frame_idx': frame_index,
+        'frame_time_in_ms': frame_timestamps,
+        'path_to_frame': frame_paths
+    })
+    
+    return df
+
+def get_frames_from_video_ffmpeg_using_fps(video_path, temp_dir="./tmp", fps=None):
+    """
+    Not used.
+    This version does not work well even though it should. 
+    Idk why but ffmpeg add a latency when using fps, maybe because it resamples the entire stream.
+    Typically I noticed a latency of 0.08s after the 1st frame. Instead of 0, 0.2, 0.4 I got 0, 0.28, 0.48,... 
+    """
+    cur_video_name = ".".join(video_path.split("/")[-1].split(".")[:-1])
+    cur_video_save_path = uniquify_dir(os.path.join(temp_dir, cur_video_name))
+    os.makedirs(cur_video_save_path, exist_ok=True)
+
+    if not os.path.exists(temp_dir):
+        os.makedirs(temp_dir)
+
+    # FFmpeg command to extract frames at the given fps
+    output_pattern = os.path.join(cur_video_save_path, 'frame_%09d.png')
+    ffmpeg_command = [
+        'ffmpeg', '-i', video_path,
+    ]
+    if fps:
+        ffmpeg_command.append('-vf')
+        ffmpeg_command.append(f'fps={fps}')
+    ffmpeg_command.append(output_pattern)
+    
+    # Run the ffmpeg command
+    fps_output = subprocess.run(ffmpeg_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
     # Create DataFrame to store frame index, path, and timestamp
     frame_files = sorted(os.listdir(cur_video_save_path))
@@ -56,14 +122,15 @@ def get_frames_from_video_ffmpeg(video_path, temp_dir="./tmp"):
     frame_paths = []
     frame_timestamps = []
 
-    # Get frame rate of the video
-    ffprobe_command = [
-        'ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 
-        'stream=r_frame_rate', '-of', 'default=noprint_wrappers=1:nokey=1', video_path
-    ]
-    fps_output = subprocess.check_output(ffprobe_command, text=True).strip()
-    fps = eval(fps_output)  # Get frames per second as a float
-
+    if fps == None:
+        # Get frame rate of the video
+        ffprobe_command = [
+            'ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 
+            'stream=r_frame_rate', '-of', 'default=noprint_wrappers=1:nokey=1', video_path
+        ]
+        fps_output = subprocess.check_output(ffprobe_command, text=True).strip()
+        fps = eval(fps_output)  # Get frames per second as a float
+        
     # Populate DataFrame
     for i, frame_file in enumerate(frame_files):
         frame_index.append(i)

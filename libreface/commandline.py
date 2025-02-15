@@ -11,6 +11,9 @@ def main_func():
     parser.add_argument("--temp", type=str, default="./tmp", help="Path where the temporary results for facial attributes can be saved.")
     parser.add_argument("--batch_size", type=int, default=256, help="Number of frames to process in a single batch when doing inference on a video.")
     parser.add_argument("--num_workers", type=int, default=2, help="Number of workers to be used in the dataloader while doing inference on a video.")
+    parser.add_argument("--frame_interval", type=int, default=1, help="Number of frame_interval to skip (eq. to change fps).")
+    parser.add_argument("--remove_temp", action='store_true', help="Remove the frames in the temp video folder (save memory)")
+    parser.add_argument("--path_scene_cuts", type=str, default="", help="If the file is long and should be cut into parts.")
 
     args = parser.parse_args()
 
@@ -20,7 +23,10 @@ def main_func():
                           temp_dir=args.temp, 
                           device=args.device,
                           batch_size=args.batch_size,
-                          num_workers=args.num_workers)
+                          num_workers=args.num_workers,
+                          frame_interval=args.frame_interval,
+                          remove_temp=args.remove_temp,
+                          path_scene_cuts=args.path_scene_cuts)
 
 if __name__ ==  "__main__":
     main_func()

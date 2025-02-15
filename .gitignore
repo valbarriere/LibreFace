@@ -24,3 +24,10 @@ build/
 dist/
 *.egg-info/*
 *.DS_Store
+temp/
+.LFace/
+tmp*
+test_csv/
+commandline_*
+nohup_*
+inference_test.py

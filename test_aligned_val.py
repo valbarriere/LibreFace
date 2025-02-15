@@ -119,7 +119,8 @@ def uniquify_file(path):
 
     return path
 
-def create_zoom_image(image_path, temp_dir = "./tmp", verbose=False, 
+
+def create_zoom_val(image_path, temp_dir = "./tmp", verbose=False, 
                       min_detection_confidence=0.5, margin_zoom=1.0):
   
   # temp_dir = uniquify_dir(temp_dir)
@@ -138,31 +139,26 @@ def create_zoom_image(image_path, temp_dir = "./tmp", verbose=False,
 
     results = face_detect.process(image_rgb)
 
-    # If there is a face detected (sometimes there is no!)
-    if results.detections:
-      bbox = results.detections[0].location_data.relative_bounding_box
+    bbox = results.detections[0].location_data.relative_bounding_box
 
-      ih, iw, _ = image_rgb.shape  # image height, width, channels
+    ih, iw, _ = image_rgb.shape  # image height, width, channels
 
-      x = int(bbox.xmin * iw)
-      y = int(bbox.ymin * ih)
-      w = int(bbox.width * iw)
-      h = int(bbox.height * ih)
+    x = int(bbox.xmin * iw)
+    y = int(bbox.ymin * ih)
+    w = int(bbox.width * iw)
+    h = int(bbox.height * ih)
 
-      x = max(0, int(x - w * margin_zoom))
-      y = max(0, int(y - h * margin_zoom))
-      w = min(iw - x, int(w * (1 + 2 * margin_zoom)))
-      h = min(ih - y, int(h * (1 + 2 * margin_zoom)))
+    x = max(0, int(x - w * margin_zoom))
+    y = max(0, int(y - h * margin_zoom))
+    w = min(iw - x, int(w * (1 + 2 * margin_zoom)))
+    h = min(ih - y, int(h * (1 + 2 * margin_zoom)))
 
-      face_roi = image_rgb[y:y+h, x:x+w]
-      # zoomed_face = cv2.resize(face_roi, (400, 400)) # not very useful as it just smooth the image
+    face_roi = image_rgb[y:y+h, x:x+w]
+    # zoomed_face = cv2.resize(face_roi, (400, 400))
 
-      path_zoom = temp_dir+f'/zoomed_{os.path.basename(img_path)}'
-      cv2.imwrite(path_zoom, face_roi)
-
-    else:
-      face_roi = []
-
+    path_zoom = temp_dir+f'/zoomed_{os.path.basename(img_path)}'
+    cv2.imwrite(path_zoom, face_roi)
+    
     return face_roi
 
 
@@ -258,27 +254,16 @@ def get_aligned_image(image_path, temp_dir = "./tmp", verbose=False,
         print("Processing face mesh had some issue...")
       # Draw face landmarks of each face.
       # print(f'Face landmarks of {name}:')
-      if not results.multi_face_landmarks:
-        if not is_zoom:
-            if verbose: print("Processing landmarks did not result on anything...")
-            if verbose: print("Trying to detect a far away face and Zoom on it...")
-            image_zoom = create_zoom_image(img_path, temp_dir=temp_dir, margin_zoom=margin_zoom)
+      if not results.multi_face_landmarks and (not is_zoom):
+          print("Processing landmarks did not result on anything...")
+          print("Trying to Zoom on the face...")
+          image_zoom = create_zoom_val(img_path, temp_dir=temp_dir, margin_zoom=margin_zoom)
+          path_zoom = temp_dir+f'/zoomed_{os.path.basename(img_path)}'
+          return get_aligned_image(path_zoom, temp_dir=temp_dir, verbose=verbose, 
+                        max_num_faces=max_num_faces,
+                        min_detection_confidence=min_detection_confidence, 
+                        is_zoom=True, image_zoom=image_zoom)
 
-            if len(image_zoom):
-              path_zoom = temp_dir+f'/zoomed_{os.path.basename(img_path)}'
-              return get_aligned_image(path_zoom, temp_dir=temp_dir, verbose=verbose, 
-                            max_num_faces=max_num_faces,
-                            min_detection_confidence=min_detection_confidence, 
-                            is_zoom=True, image_zoom=image_zoom)
-            else:
-              if verbose: print("No face detected...")
-              return None, None, None, None
-        else:
-          if verbose: print(f"Zoom did not work to align the face on {image_name}...")
-          return None, None, None, None
-      elif len(results.multi_face_landmarks)>1:
-        if verbose: print(f"Seems code do not work for two faces detected...")
-        return None, None, None, None
       #img_h, img_w, img_c = image.shape
       img_h, img_w, img_c = image_rgb.shape
       face_3d = []
@@ -420,31 +405,24 @@ def get_aligned_image(image_path, temp_dir = "./tmp", verbose=False,
   if is_zoom:
     os.remove(image_path)
 
-  return aligned_img_save_path, head_pose, landmark_dict, is_zoom
+  return aligned_img_save_path, head_pose, landmark_dict
 
-def get_aligned_video_frames(frames_df, temp_dir="./tmp", verbose=True):
+def get_aligned_video_frames(frames_df, temp_dir="./tmp"):
   aligned_frames_paths = []
   head_pose_list = []
   landmark_list = []
-  is_zoom_list = []
-  
-  tqdm_list = frames_df.iterrows()
-  if verbose:
-    tqdm_list = tqdm(tqdm_list, desc="Aligning face for video frames...")
-
-  for _, row in tqdm_list:
-      aligned_image_path, head_pose, landmark_dict, is_zoom = get_aligned_image(row["path_to_frame"], temp_dir)
+  for _, row in tqdm(frames_df.iterrows(), desc="Aligning face for video frames..."):
+      aligned_image_path, head_pose, landmark_dict = get_aligned_image(row["path_to_frame"], temp_dir)
       aligned_frames_paths.append(aligned_image_path)
       head_pose_list.append(head_pose)
       landmark_list.append(landmark_dict)
-      is_zoom_list.append(is_zoom)
   
-  return aligned_frames_paths, head_pose_list, landmark_list, is_zoom_list
+  return aligned_frames_paths, head_pose_list, landmark_list
 
 if __name__ == "__main__":
   parser = argparse.ArgumentParser()
-  parser.add_argument('--image_path', type=str, default='/home/achaubey/Desktop/projects/data/DISFA/images/LeftVideoSN001_comp/LeftVideoSN001_comp_0001.png', help='Input path to input images')
+  parser.add_argument('--image_path', type=str, default='/home/vbarrier/LibreFace/examples/test_neg.png', help='Input path to input images')
   
   args = parser.parse_args()
-  aligned_image_path, _, _, _ = get_aligned_image(args.image_path)
+  aligned_image_path, _, _ = get_aligned_image(args.image_path, max_num_faces=1, min_detection_confidence=.5, margin_zoom=2.)
   print("Aligned image saved to ", aligned_image_path)
